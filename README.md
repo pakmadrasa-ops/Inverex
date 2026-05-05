@@ -1,14 +1,7 @@
 # esphome-pipsolar
 
-![GitHub actions](https://github.com/syssi/esphome-pipsolar/actions/workflows/ci.yaml/badge.svg)
-![GitHub stars](https://img.shields.io/github/stars/syssi/esphome-pipsolar)
-![GitHub forks](https://img.shields.io/github/forks/syssi/esphome-pipsolar)
-![GitHub watchers](https://img.shields.io/github/watchers/syssi/esphome-pipsolar)
-[!["Buy Me A Coffee"](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg)](https://www.buymeacoffee.com/syssi)
+ESPHome example configuration to monitor and control an Inverex inverter via RS232
 
-ESPHome example configuration to monitor and control a pipsolar inverter via RS232
-
-Kudos to [@andreashergert1984](https://github.com/andreashergert1984) for the great work!
 
 ## Supported devices
 
@@ -23,23 +16,6 @@ Kudos to [@andreashergert1984](https://github.com/andreashergert1984) for the gr
 * Generic ESP32 or ESP8266 board
 
 ## Schematics
-
-<a href="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/001.jpg" target="_blank">
-  <img src="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/001.jpg" height="172">
-</a>
-
-<a href="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/002.jpg" target="_blank">
-  <img src="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/002.jpg" height="172">
-</a>
-
-<a href="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/004.jpg" target="_blank">
-  <img src="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/004.jpg" height="172">
-</a>
-
-<a href="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/005.jpg" target="_blank">
-  <img src="https://raw.githubusercontent.com/syssi/esphome-pipsolar/main/images/005.jpg" height="172">
-</a>
-
 ```
                RS232                     UART-TTL
 ┌──────────┐              ┌──────────┐                ┌─────────┐
@@ -54,13 +30,13 @@ Kudos to [@andreashergert1984](https://github.com/andreashergert1984) for the gr
 ### RJ45 connector
 
 | Pin     | Purpose      | MAX3232 pin       | Color T-568B |
-| :-----: | :----------- | :---------------- | :------------|
-|    1    | TX           | P13 (RIN1)        | White-Orange |
+| :-----: | :----------- | :---------------- | :------------| 
+|    1    | TX           | P13 (RIN1)        | White-Orange | 
 |    2    | RX           | P14 (DOUT1)       | Orange       |
 |    3    |              |                   |              |
-|    4    | VCC 12V      | -                 | Blue         |
+|    4    |              |                   |              |
 |    5    |              |                   |              |
-|    6    |              |                   |              |
+|    6    | VCC 12V      |                   | Blue         |
 |    7    |              |                   |              |
 |    8    | GND          | P15 (GND)         | Brown        |
 
@@ -107,7 +83,6 @@ esphome run esp32-example.yaml
 
 ```
 
-Take a look at the [official documentation of the component](https://esphome.io/components/pipsolar.html) for additional details.
 
 ## Known issues
 
@@ -145,3 +120,5 @@ If you don't know the protocol of your inverter please use [this configuration](
 * https://github.com/esphome/esphome-docs/pull/1084/files
 * https://github.com/andreashergert1984/esphome/tree/feature_pipsolar_anh
 * https://github.com/jblance/mpp-solar/tree/master/docs/protocols
+
+[official documentation of the component](https://esphome.io/components/pipsolar.html) 
