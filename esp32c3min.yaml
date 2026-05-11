@@ -1,0 +1,180 @@
+esphome:
+  name: powerzone
+  friendly_name: PowerZone
+  platformio_options:
+    build_flags:
+      - -DCONFIG_ARDUINO_LOOP_STACK_SIZE=16384
+  on_boot:
+    then:
+      - delay: 10s
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+  #cpu_frequency: 160MHz
+
+logger:
+  level: DEBUG  
+  # Options: NONE, ERROR, WARN, INFO, DEBUG, VERY_VERBOSE
+  #baud_rate: 0 # This sometimes helps in hiding serial output from the web UI
+  
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 0s
+  
+ota:
+  platform: esphome
+
+safe_mode:
+  disabled: true
+  
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "BijliNama"
+    password: "12345678"
+    ap_timeout: 1min  # Add this
+  #output_power: 10.5dBm
+  power_save_mode: none #light
+  #fast_connect: true
+  reboot_timeout: 0s #15min
+  
+  manual_ip:
+    static_ip: 192.168.100.39
+    gateway: 192.168.100.1
+    subnet: 255.255.255.0
+    dns1: 192.168.100.1
+    
+web_server:
+  port: 80
+  version: 3
+  local: true
+  log: true
+  ota: false
+  sorting_groups:
+    - id: sorting_group_powers
+      name: "Power Budget"
+      sorting_weight: 10
+      
+    - id: sorting_group_voltmeter
+      name: "Volt Meters "
+      sorting_weight: 20
+
+    - id: sorting_group_ammeter
+      name: "Ampere Meters"
+      sorting_weight: 30
+
+    - id: sorting_group_frequency
+      name: "Frequency Meters"
+      sorting_weight: 40
+
+    - id: sorting_group_status
+      name: "Status"
+      sorting_weight: 50
+
+    - id: sorting_group_battery_settings
+      name: "Battery Settings"
+      sorting_weight: 60
+
+    - id: sorting_group_settings
+      name: "Output Source"
+      sorting_weight: 70
+      
+uart:
+  id: uart_bus
+  rx_pin: GPIO3
+  tx_pin: GPIO4
+  baud_rate: 2400
+
+pipsolar:
+  id: inverter0
+  uart_id: uart_bus
+  update_interval: 15s
+
+sensor:
+  - platform: pipsolar
+    pipsolar_id: inverter0
+
+    ac_output_voltage:
+      name: "Output Volts"
+      web_server:
+        sorting_group_id: sorting_group_voltmeter
+
+    ac_output_active_power:
+      name: "Output (W)"
+      web_server:
+        sorting_group_id: sorting_group_powers
+
+
+    pv_charging_power:
+      name: "PV (W)"
+      web_server:
+        sorting_group_id: sorting_group_powers
+      
+    pv_input_current_for_battery:
+      name: "PV (A)"
+      web_server:
+        sorting_group_id: sorting_group_ammeter
+
+    pv_input_voltage:
+      name: "PV (V)"
+      web_server:
+        sorting_group_id: sorting_group_voltmeter
+
+    battery_voltage:
+      name: "Battery Volts"
+      id: battery_voltage  # <--- Add this
+      web_server:
+        sorting_group_id: sorting_group_voltmeter
+
+    battery_charging_current:
+      name: "Battery Charging (A)"
+      id: battery_charging_current
+      web_server:
+        sorting_group_id: sorting_group_ammeter
+      
+      
+    battery_discharge_current:
+      name: "Battery Discharge (A)"
+      id: battery_discharge_current
+      web_server:
+        sorting_group_id: sorting_group_ammeter
+
+
+    output_source_priority:
+      name: "Output Source Priority"
+      web_server:
+        sorting_group_id: sorting_group_status
+
+    charger_source_priority:
+      name: "Charging Source Priority"
+      web_server:
+        sorting_group_id: sorting_group_status
+
+
+switch:
+  - platform: pipsolar
+    pipsolar_id: inverter0
+    output_source_priority_utility:
+      name: "Utility Output"
+      web_server:
+        sorting_group_id: sorting_group_settings 			
+    output_source_priority_solar:
+      name: "Solar Output"
+      web_server:
+        sorting_group_id: sorting_group_settings
+    output_source_priority_battery:
+      name: "Battery Output"
+      web_server:
+        sorting_group_id: sorting_group_settings
+    output_source_priority_hybrid:
+      name: "Hybrid Output"
+      web_server:
+        sorting_group_id: sorting_group_settings
+
+
+
+captive_portal:
