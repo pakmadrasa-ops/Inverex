@@ -1,3 +1,4 @@
+
 esphome:
   name: powerzone
   friendly_name: PowerZone
@@ -52,7 +53,7 @@ web_server:
   port: 80
   version: 3
   local: true
-  log: true
+  log: false
   ota: false
   sorting_groups:
     - id: sorting_group_powers
@@ -155,26 +156,108 @@ sensor:
         sorting_group_id: sorting_group_status
 
 
+  - platform: template
+    name: "Battery Charging (W)"
+    id: "battery_power_watts"
+    unit_of_measurement: "W"
+    device_class: "power"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    lambda: |-
+      return (id(battery_charging_current).state - id(battery_discharge_current).state) * id(battery_voltage).state;
+    web_server:
+      sorting_group_id: sorting_group_powers   
+    update_interval: 15s
+
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 15s
+    #entity_category: "diagnostic"
+    web_server:
+      sorting_group_id: sorting_group_status
+
+
+
+
+
+
 switch:
   - platform: pipsolar
     pipsolar_id: inverter0
     output_source_priority_utility:
       name: "Utility Output"
       web_server:
-        sorting_group_id: sorting_group_settings 			
+        sorting_group_id: sorting_group_settings
+        
     output_source_priority_solar:
       name: "Solar Output"
       web_server:
         sorting_group_id: sorting_group_settings
+      id: output_source_priority_solar
+     
     output_source_priority_battery:
       name: "Battery Output"
       web_server:
         sorting_group_id: sorting_group_settings
+      id: output_source_priority_battery
+    
     output_source_priority_hybrid:
       name: "Hybrid Output"
       web_server:
         sorting_group_id: sorting_group_settings
 
+time:
+  - platform: sntp
+    id: sntp_time
 
+
+
+# Add datetime components for user-configurable schedules
+datetime:
+  - platform: template
+    type: time
+    id: schedule_priority1_time
+    name: "Set Switch to Solar"
+    time_id: sntp_time
+    optimistic: true
+    restore_value: true
+    initial_value: "17:00:00"
+    on_time:
+      then:
+        - switch.turn_on: output_source_priority_solar
+        
+  - platform: template
+    type: time
+    id: schedule_priority2_time
+    name: "Set Switch to Battery (SbU)"
+    time_id: sntp_time
+    optimistic: true
+    restore_value: true
+    initial_value: "7:00:00"
+    on_time:
+      then:
+        - switch.turn_on: output_source_priority_battery
+
+# Optional: Add text sensor to display current schedule values
+text_sensor:
+  - platform: template
+    name: "Switch to Solar Scheduled"
+    lambda: |-
+      auto t = id(schedule_priority1_time).state_as_esptime();
+      char str[9];
+      snprintf(str, sizeof(str), "%02d:%02d:%02d", t.hour, t.minute, t.second);
+      return {str};
+    update_interval: 60s
+    
+  - platform: template
+    name: "Switch to Battery (SbU) Scheduled"
+    lambda: |-
+      auto t = id(schedule_priority2_time).state_as_esptime();
+      char str[9];
+      snprintf(str, sizeof(str), "%02d:%02d:%02d", t.hour, t.minute, t.second);
+      return {str};
+    update_interval: 60s
+    
 
 captive_portal:
