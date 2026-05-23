@@ -1,12 +1,3 @@
-Looking at this Tasmota to ESPHome conversion, I need to carefully translate the logic. The Tasmota configuration implements a pump controller with:
-1. Time-based scheduling (morning/evening slots)
-2. Dry-run protection using analog sensor (likely current or flow sensor)
-3. Retry mechanism (up to 3 attempts per slot)
-4. Manual override switch
-
-However, I notice the existing YAML is partially configured for solar inverter monitoring (pipsolar, uart), but the pump logic needs to be integrated. Let me provide the complete translation:
-
-```yaml
 esphome:
   name: motor
   friendly_name: motor
@@ -358,15 +349,3 @@ number:
             value: !lambda 'return x;'
 
 captive_portal: 
-```
-
-Key translation notes:
-
-1. **Global variables** replaced Tasmota's var1, var2, var3 and mem1
-2. **Time slots** use SNTP `on_time` triggers instead of Tasmota timers
-3. **Dry-run detection** uses ADC sensor on A0 with configurable threshold
-4. **Retry mechanism** implemented with scripts and attempt counter
-5. **Manual override** uses binary sensor with pull-up configuration (inverted to match Tasmota's SwitchMode 2)
-6. **Timer values**: Tasmota's RULETIMER uses deciseconds (600 = 60 seconds), but based on your algorithm comments showing 6 seconds, I used 6 seconds for check and 12 seconds for retry. Adjust if needed.
-
-The original Tasmota had morning slot 6:00-6:30? But your timers show 6:00, 9:00, 16:00, 20:00 - I used 2-hour morning slot (6-9) and 4-hour evening slot (16-20). Adjust the hours in the `on_time` blocks as needed.
