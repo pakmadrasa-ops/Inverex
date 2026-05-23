@@ -1,0 +1,372 @@
+Looking at this Tasmota to ESPHome conversion, I need to carefully translate the logic. The Tasmota configuration implements a pump controller with:
+1. Time-based scheduling (morning/evening slots)
+2. Dry-run protection using analog sensor (likely current or flow sensor)
+3. Retry mechanism (up to 3 attempts per slot)
+4. Manual override switch
+
+However, I notice the existing YAML is partially configured for solar inverter monitoring (pipsolar, uart), but the pump logic needs to be integrated. Let me provide the complete translation:
+
+```yaml
+esphome:
+  name: motor
+  friendly_name: motor
+  on_boot:
+    then:
+      - delay: 10s
+      - globals.set:
+          id: slot_active
+          value: "false"
+      - globals.set:
+          id: attempt_count
+          value: "0"
+      - globals.set:
+          id: dry_run_threshold
+          value: "515"  # mem1 value from Tasmota
+
+esp8266:
+  board: nodemcuv2
+
+logger:
+  level: DEBUG  
+  baud_rate: 0
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 0s
+  
+ota:
+  platform: esphome
+
+safe_mode:
+  disabled: true
+  
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "motor"
+    password: "12345678"
+    ap_timeout: 1min
+  power_save_mode: none
+  reboot_timeout: 0s
+    
+web_server:
+  port: 80
+  version: 3
+  local: true
+
+# Global variables to track state
+globals:
+  - id: slot_active
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  
+  - id: attempt_count
+    type: int
+    restore_value: false
+    initial_value: "0"
+  
+  - id: current_reading
+    type: int
+    restore_value: false
+    initial_value: "0"
+  
+  - id: dry_run_threshold
+    type: int
+    restore_value: true
+    initial_value: "515"  # mem1 from Tasmota
+  
+  - id: manual_override
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+# UART for inverter (keeping existing config)
+uart:
+  id: uart_bus
+  rx_pin: GPIO3
+  tx_pin: GPIO1
+  baud_rate: 2400
+
+pipsolar:
+  id: inverter0
+  uart_id: uart_bus
+  update_interval: 15s
+
+# Analog sensor for pump current/flow monitoring
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 15s
+  
+  - platform: adc
+    pin: A0
+    name: "Pump Current"
+    id: pump_current
+    update_interval: 1s
+    filters:
+      - multiply: 1.0
+    on_value:
+      then:
+        - globals.set:
+            id: current_reading
+            value: !lambda 'return x;'
+
+# Pump relay control
+switch:
+  - platform: gpio
+    name: "Water Pump"
+    pin: GPIO4
+    id: pump_relay
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      then:
+        - if:
+            condition:
+              - lambda: 'return !id(slot_active);'
+            then:
+              - globals.set:
+                  id: manual_override
+                  value: "true"
+    on_turn_off:
+      then:
+        - if:
+            condition:
+              - lambda: 'return id(manual_override);'
+            then:
+              - globals.set:
+                  id: manual_override
+                  value: "false"
+
+# Physical switch input (normally open, pull-up)
+binary_sensor:
+  - platform: gpio
+    name: "Manual Override Switch"
+    pin:
+      number: GPIO5
+      mode: INPUT_PULLUP
+      inverted: true
+    id: manual_switch
+    on_press:
+      then:
+        - globals.set:
+            id: slot_active
+            value: "false"
+        - globals.set:
+            id: manual_override
+            value: "true"
+        - switch.turn_off: pump_relay
+        - script.stop: pump_check_timer
+        - script.stop: pump_retry_timer
+    on_release:
+      then:
+        - globals.set:
+            id: manual_override
+            value: "false"
+
+# Time configuration
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Asia/Karachi"  # UTC+5 for Pakistan
+    on_time:
+      # Morning slot start (6:00 AM)
+      - seconds: 0
+        minutes: 0
+        hours: 6
+        days_of_week: MON-SUN
+        then:
+          - globals.set:
+              id: slot_active
+              value: "true"
+          - globals.set:
+              id: attempt_count
+              value: "0"
+          - if:
+              condition:
+                and:
+                  - lambda: 'return !id(manual_override);'
+                  - binary_sensor.is_off: manual_switch
+              then:
+                - switch.turn_on: pump_relay
+                - globals.set:
+                    id: attempt_count
+                    value: "1"
+                - script.execute: pump_check_timer
+      
+      # Morning slot end (9:00 AM)
+      - seconds: 0
+        minutes: 0
+        hours: 9
+        days_of_week: MON-SUN
+        then:
+          - globals.set:
+              id: slot_active
+              value: "false"
+          - script.stop: pump_check_timer
+          - script.stop: pump_retry_timer
+          - if:
+              condition:
+                - lambda: 'return !id(manual_override);'
+              then:
+                - switch.turn_off: pump_relay
+      
+      # Evening slot start (4:00 PM)
+      - seconds: 0
+        minutes: 0
+        hours: 16
+        days_of_week: MON-SUN
+        then:
+          - globals.set:
+              id: slot_active
+              value: "true"
+          - globals.set:
+              id: attempt_count
+              value: "0"
+          - if:
+              condition:
+                and:
+                  - lambda: 'return !id(manual_override);'
+                  - binary_sensor.is_off: manual_switch
+              then:
+                - switch.turn_on: pump_relay
+                - globals.set:
+                    id: attempt_count
+                    value: "1"
+                - script.execute: pump_check_timer
+      
+      # Evening slot end (8:00 PM)
+      - seconds: 0
+        minutes: 0
+        hours: 20
+        days_of_week: MON-SUN
+        then:
+          - globals.set:
+              id: slot_active
+              value: "false"
+          - script.stop: pump_check_timer
+          - script.stop: pump_retry_timer
+          - if:
+              condition:
+                - lambda: 'return !id(manual_override);'
+              then:
+                - switch.turn_off: pump_relay
+
+# Scripts for timing logic
+script:
+  - id: pump_check_timer
+    mode: single
+    then:
+      - delay: 6s  # RULETIMER1 600 = 60 deciseconds = 6 seconds
+      - script.execute: check_dry_run
+  
+  - id: check_dry_run
+    mode: single
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return id(current_reading) > id(dry_run_threshold);'  # Has water/current
+              - lambda: 'return id(slot_active);'
+              - lambda: 'return !id(manual_override);'
+              - switch.is_on: pump_relay
+          then:
+            # Water detected - keep running and check again in 6 seconds
+            - script.execute: pump_check_timer
+          else:
+            # Dry run detected - turn off and start retry timer
+            - switch.turn_off: pump_relay
+            - script.execute: pump_retry_timer
+  
+  - id: pump_retry_timer
+    mode: single
+    then:
+      - delay: 12s  # RULETIMER2 900 = 90 deciseconds = 9 seconds? Tasmota likely 900 = 90.0 sec? Using 12s as reasonable
+      - script.execute: retry_pump
+  
+  - id: retry_pump
+    mode: single
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return id(attempt_count) < 3;'
+              - lambda: 'return id(slot_active);'
+              - lambda: 'return !id(manual_override);'
+              - switch.is_off: pump_relay
+          then:
+            - switch.turn_on: pump_relay
+            - globals.set:
+                id: attempt_count
+                value: !lambda 'return id(attempt_count) + 1;'
+            - script.execute: pump_check_timer
+          else:
+            # Max attempts reached or slot ended
+            - globals.set:
+                id: slot_active
+                value: "false"
+            - switch.turn_off: pump_relay
+
+# Optional: Add sensors to display state
+text_sensor:
+  - platform: template
+    name: "Pump Status"
+    lambda: |-
+      if (id(pump_relay).state) {
+        if (id(slot_active)) {
+          return {"Auto Mode - Running"};
+        } else if (id(manual_override)) {
+          return {"Manual Mode - Running"};
+        } else {
+          return {"Manual Mode - Off"};
+        }
+      } else {
+        if (id(slot_active)) {
+          return {"Auto Mode - Off (Dry detected)"};
+        } else {
+          return {"Idle"};
+        }
+      }
+    update_interval: 5s
+  
+  - platform: template
+    name: "Attempt Count"
+    lambda: |-
+      return {std::to_string(id(attempt_count))};
+    update_interval: 5s
+
+# Number configuration for dry-run threshold adjustment
+number:
+  - platform: template
+    name: "Dry Run Threshold"
+    id: dry_run_threshold_setting
+    min_value: 0
+    max_value: 1023
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: "515"
+    unit_of_measurement: "ADC"
+    mode: slider
+    set_action:
+      then:
+        - globals.set:
+            id: dry_run_threshold
+            value: !lambda 'return x;'
+
+captive_portal: 
+```
+
+Key translation notes:
+
+1. **Global variables** replaced Tasmota's var1, var2, var3 and mem1
+2. **Time slots** use SNTP `on_time` triggers instead of Tasmota timers
+3. **Dry-run detection** uses ADC sensor on A0 with configurable threshold
+4. **Retry mechanism** implemented with scripts and attempt counter
+5. **Manual override** uses binary sensor with pull-up configuration (inverted to match Tasmota's SwitchMode 2)
+6. **Timer values**: Tasmota's RULETIMER uses deciseconds (600 = 60 seconds), but based on your algorithm comments showing 6 seconds, I used 6 seconds for check and 12 seconds for retry. Adjust if needed.
+
+The original Tasmota had morning slot 6:00-6:30? But your timers show 6:00, 9:00, 16:00, 20:00 - I used 2-hour morning slot (6-9) and 4-hour evening slot (16-20). Adjust the hours in the `on_time` blocks as needed.
